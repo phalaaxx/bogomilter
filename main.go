@@ -4,6 +4,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/phalaaxx/cdb"
 	"github.com/phalaaxx/milter"
 	"io"
 	"io/ioutil"
@@ -20,6 +21,7 @@ import (
 var BogoBin string
 var BogoDir string
 var LocalHold bool
+var LocalCdb string
 
 /* BogoMilter object */
 type BogoMilter struct {
@@ -45,6 +47,22 @@ func (b *BogoMilter) MailFrom(from string, m *milter.Modifier) (milter.Response,
 	// save from address for later reference
 	b.from = from
 	return milter.RespContinue, nil
+}
+
+/* VerifyLocal checks if local database contains named mailbox address */
+func VerifyLocal(name string) bool {
+	var value *string
+	err := cdb.Lookup(
+		LocalCdb,
+		func (db *cdb.Reader) (err error) {
+			value, err = db.Get(name)
+			return err
+		},
+	)
+	if err == nil && value != nil && len(*value) != 0 {
+		return true
+	}
+	return false
 }
 
 /* Headers is called after the last of message headers */
@@ -125,12 +143,10 @@ func (b *BogoMilter) Body(m *milter.Modifier) (milter.Response, error) {
 			fmt.Printf("detected spam from %s\n", b.from)
 		}
 		// put locally originating spam into quarantine
-		if LocalHold && len(m.Headers.Get("Received")) == 0 {
-			if strings.HasPrefix(header, "X-Bogosity: Spam") {
-				fmt.Printf("quarantine mail from %s\n", b.from)
-				m.Quarantine("local spam")
-				// TODO: notify administrator
-			}
+		if LocalHold && VerifyLocal(b.from) && strings.HasPrefix(header, "X-Bogosity: Spam") {
+			fmt.Printf("quarantine mail from %s\n", b.from)
+			m.Quarantine("local spam")
+			// TODO: notify administrator
 		}
 	}
 	return milter.RespAccept, nil
@@ -170,6 +186,10 @@ func main() {
 		"db",
 		"/var/cache/filter",
 		"Path to bogofilter database")
+	flag.StringVar(&LocalCdb,
+		"cdb",
+		"/etc/postfix/cdb/virtual-mailbox-maps.cdb",
+		"A cdb database containing list of all local mailboxes")
 	flag.BoolVar(&LocalHold,
 		"localhold",
 		false,

@@ -8,6 +8,8 @@ Group=postfix
 WorkingDirectory=/var/cache/filter
 ExecStart=/usr/local/bin/bogomilter \
 	--proto unix \
+	--localhold \
+	--cdb /etc/postfix/cdb/virtual-mailbox-maps.cdb \
 	--addr /var/spool/postfix/milters/bogo.sock
 KillMode=process
 Restart=on-failure
